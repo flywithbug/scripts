@@ -7,7 +7,7 @@ from pathlib import Path
 from subprocess import call
 
 # 配置参数
-REPO_URL = "https://github.com/yourname/your-tools-repo.git"  # 替换为实际仓库地址
+REPO_URL = "git@github.com:flywithbug/scripts.git"  # 替换为实际仓库地址
 INSTALL_DIR = Path.home() / ".script_tool"
 BIN_DIR = Path.home() / ".local/bin"  # 推荐使用标准bin目录
 PLATFORM = sys.platform
