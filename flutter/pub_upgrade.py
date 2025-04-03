@@ -32,11 +32,13 @@ def get_latest_packages():
     response = requests.get(API_URL, headers=headers)
     response.raise_for_status()
     packages = response.json()
-
     latest_versions = {}
 
     for pkg in packages:
         name, version = pkg["name"], pkg["version"]
+        if "+" in version:
+            continue  # 直接跳过带有 + 号的版本
+            
         if name not in latest_versions or compare_versions(version, latest_versions[name]) == 1:
             latest_versions[name] = version  # 只保留最高版本
 
