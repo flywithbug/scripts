@@ -3,7 +3,6 @@ import os
 import re
 import subprocess
 import sys
-
 import requests
 
 # 从环境变量获取 API_KEY、API_URL 和 PRIVATE_URL_PREFIX
@@ -27,7 +26,6 @@ if not PRIVATE_URL_PREFIX:
     print("❌ 环境变量 cloudsmithPrivateUrl 未设置！")
     exit(1)
 
-
 def git_pull():
     """拉取最新的代码"""
     print("正在拉取最新代码...")
@@ -36,7 +34,6 @@ def git_pull():
         print(f"❌ 拉取代码失败：{result.stderr.decode()}")
         sys.exit(1)
     print("✅ 代码拉取完成。")
-
 
 def get_latest_packages():
     """
@@ -59,7 +56,6 @@ def get_latest_packages():
 
     return latest_versions
 
-
 def compare_versions(v1, v2):
     """
     纯 Python 代码实现语义化版本比较：
@@ -72,7 +68,6 @@ def compare_versions(v1, v2):
     while len(parts2) < len(parts1): parts2.append(0)
 
     return (parts1 > parts2) - (parts1 < parts2)
-
 
 def process_dependency_block(dep_block, latest_versions):
     """
@@ -118,7 +113,6 @@ def process_dependency_block(dep_block, latest_versions):
             updated = True  # 标记为已更新
 
     return dep_block, updated
-
 
 def update_pubspec(pubspec_file, latest_versions):
     """
@@ -191,11 +185,21 @@ def update_pubspec(pubspec_file, latest_versions):
     else:
         print("✅ pubspec.yaml 没有更新。")
 
+    return any_update
+
+def flutter_pub_get():
+    """执行 flutter pub get"""
+    print("执行 flutter pub get...")
+    result = subprocess.run(["flutter", "pub", "get"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"❌ flutter pub get 失败：{result.stderr.decode()}")
+        sys.exit(1)
+    print("✅ flutter pub get 执行成功！")
 
 def git_commit_and_push():
     """提交更新并推送到远程仓库"""
     print("正在提交更新到Git...")
-    result = subprocess.run(["git", "add", "pubspec.yaml"], stdout=subprocess.PIPE,
+    result = subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"], stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)
     if result.returncode != 0:
         print(f"❌ git add 失败：{result.stderr.decode()}")
@@ -214,7 +218,6 @@ def git_commit_and_push():
 
     print("✅ 提交并推送成功！")
 
-
 def main():
     pubspec_file = "pubspec.yaml"
 
@@ -227,11 +230,20 @@ def main():
         print("❌ 获取最新包信息失败：", e)
         return
 
-    update_pubspec(pubspec_file, latest_versions)
+    # 更新 pubspec.yaml 文件
+    any_update = update_pubspec(pubspec_file, latest_versions)
 
-    # 提交更新并推送到Git
-    git_commit_and_push()
+    if any_update:
+        # 执行 flutter pub get
+        flutter_pub_get()
 
+        # 提交更新并推送到Git
+        git_commit_and_push()
+
+        # 打印版本更新信息
+        print("✅ 版本更新完成！")
+    else:
+        print("❌ 没有更新任何依赖。")
 
 if __name__ == "__main__":
     main()
