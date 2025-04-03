@@ -18,20 +18,34 @@ def setup_environment():
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
 def clone_or_update_repo():
-    """克隆或更新工具仓库"""
+    """克隆或更新工具仓库，更新失败时删除旧仓库并重新克隆"""
     repo_dir = INSTALL_DIR / "repo"
 
+    # 检查仓库是否已经存在
     if (repo_dir / ".git").exists():
         print("更新工具仓库...")
         os.chdir(repo_dir)
+
+        # 尝试更新仓库
         if call(["git", "pull"]) != 0:
-            print("仓库更新失败，请手动检查")
-            sys.exit(1)
+            print("仓库更新失败，删除旧仓库并重新克隆...")
+            # 删除旧仓库
+            call(["rm", "-rf", str(repo_dir)])
+
+            # 重新克隆仓库
+            if call(["git", "clone", REPO_URL, str(repo_dir)]) != 0:
+                print("仓库克隆失败，请检查网络和仓库地址")
+                sys.exit(1)
+            print("仓库重新克隆成功！")
+            return repo_dir
     else:
         print("克隆工具仓库...")
+        # 克隆仓库
         if call(["git", "clone", REPO_URL, str(repo_dir)]) != 0:
             print("仓库克隆失败，请检查网络和仓库地址")
             sys.exit(1)
+
+    print("仓库更新或克隆完成！")
     return repo_dir
 
 def create_wrapper(script_path):
@@ -88,9 +102,9 @@ def check_path():
             print(f'export PATH="$PATH:{BIN_DIR}"')
 
 if __name__ == '__main__':
-    print("开始安装脚本工具...")
     setup_environment()
     repo_path = clone_or_update_repo()
+    print("开始安装脚本工具...")
     install_commands(repo_path)
 
     print("\n✅ 安装完成！可用命令列表:")
