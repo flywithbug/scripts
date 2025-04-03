@@ -59,7 +59,7 @@ def install_commands(repo_path):
     """安装所有工具命令"""
     tool_dirs = [
         repo_path / "flutter",   # 示例工具目录
-        repo_path / "devops"     # 其他工具目录
+        repo_path / "tools"     # 其他工具目录
     ]
 
     for tool_dir in tool_dirs:
