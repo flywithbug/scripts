@@ -3,6 +3,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
+from itertools import cycle
 
 import requests
 
@@ -11,15 +14,17 @@ API_KEY = os.getenv("cloudsmithApiKey")
 API_URL = os.getenv("cloudsmithApiUrl")
 PRIVATE_URL_PREFIX = os.getenv("cloudsmithPrivateUrl")
 
-# 检查必需的环境变量是否存在
+# 获取提交信息，默认为 "up deps"
+commit_message = sys.argv[1] if len(sys.argv) > 1 else "up deps"
+commit_updates = []  # 存储依赖更新日志
+
+# 检查环境变量
 if not API_KEY:
     print("❌ 环境变量 cloudsmithApiKey 未设置！")
     exit(1)
-
 if not API_URL:
     print("❌ 环境变量 cloudsmithApiUrl 未设置！")
     exit(1)
-
 if not PRIVATE_URL_PREFIX:
     print("❌ 环境变量 cloudsmithPrivateUrl 未设置！")
     exit(1)
@@ -36,7 +41,7 @@ def git_pull():
 
 
 def get_latest_packages():
-    """获取私有仓库的最新包版本"""
+    """获取私有仓库最新包版本"""
     headers = {"X-Api-Key": API_KEY, "accept": "application/json"}
     response = requests.get(API_URL, headers=headers)
     response.raise_for_status()
@@ -46,10 +51,9 @@ def get_latest_packages():
     for pkg in packages:
         name, version = pkg["name"], pkg["version"]
         if "+" in version:
-            continue  # 过滤带 "+" 的版本
-
+            continue  # 跳过包含 "+" 的版本
         if name not in latest_versions or compare_versions(version, latest_versions[name]) == 1:
-            latest_versions[name] = version  # 只保留最新版本
+            latest_versions[name] = version  # 只保留最高版本
 
     return latest_versions
 
@@ -59,12 +63,11 @@ def compare_versions(v1, v2):
     parts1, parts2 = [list(map(int, v.split('.'))) for v in (v1, v2)]
     while len(parts1) < len(parts2): parts1.append(0)
     while len(parts2) < len(parts1): parts2.append(0)
-
     return (parts1 > parts2) - (parts1 < parts2)
 
 
-def process_dependency_block(dep_block, latest_versions, updated_deps):
-    """解析并更新一个私有依赖块"""
+def process_dependency_block(dep_block, latest_versions):
+    """解析并更新私有依赖（保留格式和注释）"""
     dep_name = None
     version_line_idx = -1
     updated = False
@@ -97,15 +100,16 @@ def process_dependency_block(dep_block, latest_versions, updated_deps):
         current_version = match.group(2)
         if compare_versions(current_version, new_version) == -1:
             print(f"🔄 升级 {dep_name}: {current_version} -> {new_version}")
+            commit_updates.append(
+                f"🔄 {dep_name}: {current_version} → {new_version}")  # 记录 commit 信息
             dep_block[version_line_idx] = f"{match.group(1)}{new_version}\n"
             updated = True
-            updated_deps.append(f"{dep_name}: {current_version} -> {new_version}")
 
     return dep_block, updated
 
 
 def update_pubspec(pubspec_file, latest_versions):
-    """更新 pubspec.yaml 文件中的私有库版本"""
+    """更新 pubspec.yaml 中的私有库"""
     with open(pubspec_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
@@ -113,7 +117,6 @@ def update_pubspec(pubspec_file, latest_versions):
     in_dependencies = False
     dep_block = []
     any_update = False
-    updated_deps = []
 
     for line in lines:
         if re.match(r'^(dependencies|dependency_overrides):\s*$', line):
@@ -127,8 +130,7 @@ def update_pubspec(pubspec_file, latest_versions):
 
         if line.strip() == "":
             if dep_block:
-                updated_block, updated = process_dependency_block(dep_block, latest_versions,
-                                                                  updated_deps)
+                updated_block, updated = process_dependency_block(dep_block, latest_versions)
                 new_lines.extend(updated_block)
                 dep_block = []
                 if updated:
@@ -138,8 +140,7 @@ def update_pubspec(pubspec_file, latest_versions):
 
         if in_dependencies and not re.match(r'^ {2}', line):
             if dep_block:
-                updated_block, updated = process_dependency_block(dep_block, latest_versions,
-                                                                  updated_deps)
+                updated_block, updated = process_dependency_block(dep_block, latest_versions)
                 new_lines.extend(updated_block)
                 dep_block = []
                 if updated:
@@ -150,8 +151,7 @@ def update_pubspec(pubspec_file, latest_versions):
 
         if re.match(r'^ {2}\S+:', line):
             if dep_block:
-                updated_block, updated = process_dependency_block(dep_block, latest_versions,
-                                                                  updated_deps)
+                updated_block, updated = process_dependency_block(dep_block, latest_versions)
                 new_lines.extend(updated_block)
                 dep_block = []
                 if updated:
@@ -164,7 +164,7 @@ def update_pubspec(pubspec_file, latest_versions):
                 new_lines.append(line)
 
     if dep_block:
-        updated_block, updated = process_dependency_block(dep_block, latest_versions, updated_deps)
+        updated_block, updated = process_dependency_block(dep_block, latest_versions)
         new_lines.extend(updated_block)
         if updated:
             any_update = True
@@ -172,68 +172,52 @@ def update_pubspec(pubspec_file, latest_versions):
     with open(pubspec_file, 'w', encoding='utf-8') as f:
         f.writelines(new_lines)
 
-    if any_update:
-        print("✅ pubspec.yaml 更新完毕！")
-    else:
-        print("✅ pubspec.yaml 没有更新。")
+    return any_update
 
-    return any_update, updated_deps
+
+def loading_animation(stop_event):
+    """加载动画"""
+    spinner = cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+    while not stop_event.is_set():
+        sys.stdout.write(f"\r{next(spinner)} 正在执行 flutter pub get... ")
+        sys.stdout.flush()
+        time.sleep(0.1)
+    sys.stdout.write("\r✅ flutter pub get 执行成功！    \n")
+    sys.stdout.flush()
 
 
 def flutter_pub_get():
-    """执行 flutter pub get"""
-    print("执行 flutter pub get...")
-    result = subprocess.run(["flutter", "pub", "get"], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"❌ flutter pub get 失败：{result.stderr.decode()}")
-        sys.exit(1)
-    print("✅ flutter pub get 执行成功！")
+    """执行 flutter pub get 并显示动画"""
+    stop_event = threading.Event()
+    loader_thread = threading.Thread(target=loading_animation, args=(stop_event,))
+    loader_thread.start()
 
+    process = subprocess.run(["flutter", "pub", "get"], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+    stop_event.set()
+    loader_thread.join()
 
-def git_commit_and_push(updated_deps):
-    """提交更新并推送到远程仓库"""
-    commit_message = "up deps:\n" + "\n".join(updated_deps) if updated_deps else "up deps"
-
-    print("正在提交更新到 Git...")
-    result = subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"❌ git add 失败：{result.stderr.decode()}")
+    if process.returncode != 0:
+        print(f"\n❌ flutter pub get 失败：{process.stderr.read()}")
         sys.exit(1)
 
-    result = subprocess.run(["git", "commit", "-m", commit_message], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"❌ git commit 失败：{result.stderr.decode()}")
-        sys.exit(1)
 
-    result = subprocess.run(["git", "push"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"❌ git push 失败：{result.stderr.decode()}")
-        sys.exit(1)
-
-    print("✅ 提交并推送成功！")
+def git_commit_and_push():
+    """提交并推送 Git"""
+    if commit_updates:
+        full_commit_msg = "\n".join(commit_updates)
+        subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"])
+        subprocess.run(["git", "commit", "-m", full_commit_msg])
+        subprocess.run(["git", "push"])
+        print("✅ 提交并推送成功！")
 
 
 def main():
-    pubspec_file = "pubspec.yaml"
-
     git_pull()
-
-    try:
-        latest_versions = get_latest_packages()
-    except Exception as e:
-        print("❌ 获取最新包信息失败：", e)
-        return
-
-    any_update, updated_deps = update_pubspec(pubspec_file, latest_versions)
-
-    if any_update:
+    latest_versions = get_latest_packages()
+    if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
-        git_commit_and_push(updated_deps)
-        print("✅ 版本内容：\n", updated_deps)
-        print("✅ 版本更新完成！")
+        git_commit_and_push()
     else:
         print("❌ 没有更新任何依赖。")
 
