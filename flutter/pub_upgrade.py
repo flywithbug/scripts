@@ -60,7 +60,7 @@ def get_latest_packages():
 
 def compare_versions(v1, v2):
     """语义化版本比较"""
-    parts1, parts2 = [list(map(int, v.split('.'))) for v in (v1, v2)]
+    parts1, parts2 = [list(map(int, v.replace('^','').split('.'))) for v in (v1, v2)]
     while len(parts1) < len(parts2): parts1.append(0)
     while len(parts2) < len(parts1): parts2.append(0)
     return (parts1 > parts2) - (parts1 < parts2)
@@ -99,6 +99,8 @@ def process_dependency_block(dep_block, latest_versions):
     if match:
         current_version = match.group(2)
         if compare_versions(current_version, new_version) == -1:
+            if current_version.startswith('^'):
+                new_version = f"^{new_version}"
             print(f"🔄 升级 {dep_name}: {current_version} -> {new_version}")
             commit_updates.append(
                 f"🔄 {dep_name}: {current_version} → {new_version}")  # 记录 commit 信息
