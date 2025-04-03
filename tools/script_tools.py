@@ -18,25 +18,28 @@ def setup_environment():
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
 def clone_or_update_repo():
-    """克隆或更新工具仓库，更新失败时删除旧仓库并重新克隆"""
+    """克隆或更新工具仓库，更新失败时强制使用远程分支覆盖本地分支"""
     repo_dir = INSTALL_DIR / "repo"
 
     # 检查仓库是否已经存在
     if (repo_dir / ".git").exists():
         print("更新工具仓库...")
+
         os.chdir(repo_dir)
 
         # 尝试更新仓库
         if call(["git", "pull"]) != 0:
-            print("仓库更新失败，删除旧仓库并重新克隆...")
-            # 删除旧仓库
-            call(["rm", "-rf", str(repo_dir)])
-
-            # 重新克隆仓库
-            if call(["git", "clone", REPO_URL, str(repo_dir)]) != 0:
-                print("仓库克隆失败，请检查网络和仓库地址")
+            print("仓库更新失败，强制重置为远程仓库的状态...")
+            # 强制重置本地仓库到远程仓库的最新版本
+            if call(["git", "fetch", "--all"]) != 0:
+                print("获取远程仓库失败，请检查网络和仓库地址")
                 sys.exit(1)
-            print("仓库重新克隆成功！")
+
+            if call(["git", "reset", "--hard", "origin/main"]) != 0:
+                print("强制重置仓库失败，请检查分支是否正确")
+                sys.exit(1)
+
+            print("本地仓库已强制重置为远程仓库的最新版本！")
             return repo_dir
     else:
         print("克隆工具仓库...")
