@@ -88,9 +88,9 @@ def check_path():
             print(f'export PATH="$PATH:{BIN_DIR}"')
 
 if __name__ == '__main__':
-    print("开始安装脚本工具...")
     setup_environment()
     repo_path = clone_or_update_repo()
+    print("开始安装脚本工具...")
     install_commands(repo_path)
 
     print("\n✅ 安装完成！可用命令列表:")
