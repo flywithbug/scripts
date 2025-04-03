@@ -36,7 +36,7 @@ def update_pubspec_preserve_format(pubspec_path):
     """更新 pubspec.yaml 版本号，保持原格式"""
     if not os.path.exists(pubspec_path):
         print(f"错误：找不到 {pubspec_path}")
-        return None
+        return None, None
 
     with open(pubspec_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -45,7 +45,7 @@ def update_pubspec_preserve_format(pubspec_path):
     match = re.search(pattern, content, flags=re.MULTILINE)
     if not match:
         print("未在 pubspec.yaml 中找到 version 字段。")
-        return None
+        return None, None
 
     new_version = increment_version(match.group("version"))
     replacement = f"{match.group('prefix')}{match.group('quote')}{new_version}{match.group('quote')}"
@@ -55,7 +55,7 @@ def update_pubspec_preserve_format(pubspec_path):
         f.write(new_content)
 
     print(f"版本号已更新: {match.group('version')} -> {new_version}")
-    return new_version
+    return new_version, match.group("version")
 
 def update_changelog(changelog_path, new_version, msg):
     """更新 CHANGELOG.md"""
@@ -82,12 +82,18 @@ def git_commit(pubspec_path, changelog_path, new_version):
 
     commit_message = f"build: {project_name} + {new_version}"
 
-    run_command(["git", "add", pubspec_path, changelog_path])
+    run_command(["git", "add", pubspec_path, changelog_path, "pubspec.lock"])
     run_command(["git", "commit", "-m", commit_message])
     print(f"已提交 Git: {commit_message}")
 
     run_command(["git", "push"])
     print("Git 代码已推送。")
+
+def flutter_pub_get():
+    """执行 flutter pub get"""
+    print("执行 flutter pub get...")
+    run_command(["flutter", "pub", "get"])
+    print("flutter pub get 执行成功！")
 
 def flutter_pub_publish():
     """执行 Flutter 预检查 & 发布"""
@@ -110,15 +116,20 @@ def main():
 
     git_pull()
 
-    new_version = update_pubspec_preserve_format(args.pubspec)
+    new_version, old_version = update_pubspec_preserve_format(args.pubspec)
     if new_version is None:
         return
 
     update_changelog(args.changelog, new_version, msg_text)
+    flutter_pub_get()  # 执行 flutter pub get
+
     git_commit(args.pubspec, args.changelog, new_version)
 
     flutter_pub_publish()
 
+    # 打印升级的版本号和包名
+    print(f"版本号已升级: {old_version} -> {new_version}")
+    print(f"包名: {os.path.basename(args.pubspec)}")
+
 if __name__ == "__main__":
     main()
-
