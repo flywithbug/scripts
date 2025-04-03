@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
 import re
+import subprocess
+import sys
 
 import requests
 
@@ -8,6 +10,9 @@ import requests
 API_KEY = os.getenv("cloudsmithApiKey")
 API_URL = os.getenv("cloudsmithApiUrl")
 PRIVATE_URL_PREFIX = os.getenv("cloudsmithPrivateUrl")
+
+# 获取提交信息，默认为 "up deps"
+commit_message = sys.argv[1] if len(sys.argv) > 1 else "up deps"
 
 # 检查必需的环境变量是否存在
 if not API_KEY:
@@ -21,6 +26,16 @@ if not API_URL:
 if not PRIVATE_URL_PREFIX:
     print("❌ 环境变量 cloudsmithPrivateUrl 未设置！")
     exit(1)
+
+
+def git_pull():
+    """拉取最新的代码"""
+    print("正在拉取最新代码...")
+    result = subprocess.run(["git", "pull"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"❌ 拉取代码失败：{result.stderr.decode()}")
+        sys.exit(1)
+    print("✅ 代码拉取完成。")
 
 
 def get_latest_packages():
@@ -38,7 +53,7 @@ def get_latest_packages():
         name, version = pkg["name"], pkg["version"]
         if "+" in version:
             continue  # 直接跳过带有 + 号的版本
-            
+
         if name not in latest_versions or compare_versions(version, latest_versions[name]) == 1:
             latest_versions[name] = version  # 只保留最高版本
 
@@ -177,14 +192,45 @@ def update_pubspec(pubspec_file, latest_versions):
         print("✅ pubspec.yaml 没有更新。")
 
 
+def git_commit_and_push():
+    """提交更新并推送到远程仓库"""
+    print("正在提交更新到Git...")
+    result = subprocess.run(["git", "add", "pubspec.yaml"], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"❌ git add 失败：{result.stderr.decode()}")
+        sys.exit(1)
+
+    result = subprocess.run(["git", "commit", "-m", commit_message], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"❌ git commit 失败：{result.stderr.decode()}")
+        sys.exit(1)
+
+    result = subprocess.run(["git", "push"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"❌ git push 失败：{result.stderr.decode()}")
+        sys.exit(1)
+
+    print("✅ 提交并推送成功！")
+
+
 def main():
     pubspec_file = "pubspec.yaml"
+
+    # 执行 git pull
+    git_pull()
+
     try:
         latest_versions = get_latest_packages()
     except Exception as e:
         print("❌ 获取最新包信息失败：", e)
         return
+
     update_pubspec(pubspec_file, latest_versions)
+
+    # 提交更新并推送到Git
+    git_commit_and_push()
 
 
 if __name__ == "__main__":
