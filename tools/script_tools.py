@@ -3,13 +3,15 @@ import os
 import sys
 import stat
 import shutil
+import zipfile
+import tempfile
 from pathlib import Path
-from subprocess import call
+from urllib.request import urlretrieve
 
 # 配置参数
-REPO_URL = "git@github.com:flywithbug/scripts.git"  # 替换为实际仓库地址
+ZIP_URL = "https://github.com/flywithbug/scripts/archive/refs/heads/master.zip"  # 替换为实际zip地址
 INSTALL_DIR = Path.home() / ".script_tool"
-BIN_DIR = Path.home() / ".local/bin"  # 推荐使用标准bin目录
+BIN_DIR = Path.home() / ".local/bin"
 PLATFORM = sys.platform
 
 def setup_environment():
@@ -17,39 +19,29 @@ def setup_environment():
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-def clone_or_update_repo():
-    """克隆或更新工具仓库，更新失败时强制使用远程分支覆盖本地分支"""
-    repo_dir = INSTALL_DIR / "repo"
+def download_and_extract_zip():
+    """下载 zip 文件并解压到 repo 目录"""
+    print("下载脚本包...")
 
-    # 检查仓库是否已经存在
-    if (repo_dir / ".git").exists():
-        print("更新工具仓库...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = Path(tmpdir) / "scripts.zip"
+        urlretrieve(ZIP_URL, zip_path)
 
-        os.chdir(repo_dir)
+        print("解压脚本包...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(tmpdir)
 
-        # 尝试更新仓库
-        if call(["git", "pull"]) != 0:
-            print("仓库更新失败，强制重置为远程仓库的状态...")
-            # 强制重置本地仓库到远程仓库的最新版本
-            if call(["git", "fetch", "--all"]) != 0:
-                print("获取远程仓库失败，请检查网络和仓库地址")
-                sys.exit(1)
+        # 假设zip解压后是 scripts-main/
+        extracted_folder = Path(tmpdir) / "scripts-main"
+        repo_dir = INSTALL_DIR / "repo"
 
-            if call(["git", "reset", "--hard", "origin/main"]) != 0:
-                print("强制重置仓库失败，请检查分支是否正确")
-                sys.exit(1)
+        # 清理旧版本
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
 
-            print("本地仓库已强制重置为远程仓库的最新版本！")
-            return repo_dir
-    else:
-        print("克隆工具仓库...")
-        # 克隆仓库
-        if call(["git", "clone", REPO_URL, str(repo_dir)]) != 0:
-            print("仓库克隆失败，请检查网络和仓库地址")
-            sys.exit(1)
-
-    print("仓库更新或克隆完成！")
-    return repo_dir
+        shutil.move(str(extracted_folder), repo_dir)
+        print("脚本包已安装到本地！")
+        return repo_dir
 
 def create_wrapper(script_path):
     """创建跨平台执行包装器"""
@@ -64,19 +56,17 @@ def create_wrapper(script_path):
 exec python3 "{script_path}" "$@"
 """
 
-    # 写入包装器文件
     with open(wrapper, 'w') as f:
         f.write(content)
 
-    # 设置可执行权限
     if PLATFORM != "win32":
         wrapper.chmod(0o755)
 
 def install_commands(repo_path):
     """安装所有工具命令"""
     tool_dirs = [
-        repo_path / "flutter",   # 示例工具目录
-        repo_path / "tools"     # 其他工具目录
+        repo_path / "flutter",
+        repo_path / "tools"
     ]
 
     for tool_dir in tool_dirs:
@@ -106,7 +96,7 @@ def check_path():
 
 if __name__ == '__main__':
     setup_environment()
-    repo_path = clone_or_update_repo()
+    repo_path = download_and_extract_zip()
     print("开始安装脚本工具...")
     install_commands(repo_path)
 
