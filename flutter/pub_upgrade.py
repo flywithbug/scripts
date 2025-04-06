@@ -30,14 +30,31 @@ if not PRIVATE_URL_PREFIX:
     exit(1)
 
 
-def git_pull():
-    """拉取最新的代码"""
-    print("正在拉取最新代码...")
-    result = subprocess.run(["git", "pull"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
-        print(f"❌ 拉取代码失败：{result.stderr.decode()}")
-        sys.exit(1)
-    print("✅ 代码拉取完成。")
+def get_current_branch():
+    """获取当前分支名称"""
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    return result.stdout.decode().strip()
+
+
+def has_remote_branch(branch_name):
+    """检查当前分支是否有远程分支"""
+    result = subprocess.run(["git", "ls-remote", "--heads", "origin", branch_name],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return bool(result.stdout)
+
+
+def git_pull(branch):
+    """如果当前分支有远程分支，则拉取更新"""
+    if has_remote_branch(branch):
+        print(f"⬇️ 正在拉取远程分支 {branch}...")
+        result = subprocess.run(["git", "pull"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            print(f"❌ 拉取失败：{result.stderr.decode()}")
+            sys.exit(1)
+        print("✅ 拉取成功。")
+    else:
+        print("⚠️ 当前分支没有远程分支，跳过拉取。")
 
 
 def get_latest_packages():
@@ -51,10 +68,9 @@ def get_latest_packages():
     for pkg in packages:
         name, version = pkg["name"], pkg["version"]
         if "+" in version:
-            continue  # 跳过包含 "+" 的版本
+            continue
         if name not in latest_versions or compare_versions(version, latest_versions[name]) == 1:
-            latest_versions[name] = version  # 只保留最高版本
-
+            latest_versions[name] = version
     return latest_versions
 
 
@@ -67,12 +83,12 @@ def compare_versions(v1, v2):
 
 
 def process_dependency_block(dep_block, latest_versions):
-    """解析并更新私有依赖（保留格式和注释）"""
+    """解析并更新依赖块"""
     dep_name = None
     version_line_idx = -1
     updated = False
 
-    for idx, line in enumerate(dep_block):
+    for line in dep_block:
         match = re.match(r'^( {2})(\S+):', line)
         if match:
             dep_name = match.group(2)
@@ -102,8 +118,7 @@ def process_dependency_block(dep_block, latest_versions):
             if current_version.startswith('^'):
                 new_version = f"^{new_version}"
             print(f"🔄 升级 {dep_name}: {current_version} -> {new_version}")
-            commit_updates.append(
-                f"🔄 {dep_name}: {current_version} → {new_version}")
+            commit_updates.append(f"🔄 {dep_name}: {current_version} → {new_version}")
             dep_block[version_line_idx] = f"{match.group(1)}{new_version}\n"
             updated = True
 
@@ -178,7 +193,6 @@ def update_pubspec(pubspec_file, latest_versions):
 
 
 def loading_animation(stop_event):
-    """加载动画"""
     spinner = cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
     while not stop_event.is_set():
         sys.stdout.write(f"\r{next(spinner)} 正在执行 flutter pub get... ")
@@ -189,7 +203,6 @@ def loading_animation(stop_event):
 
 
 def flutter_pub_get():
-    """执行 flutter pub get 并显示动画"""
     stop_event = threading.Event()
     loader_thread = threading.Thread(target=loading_animation, args=(stop_event,))
     loader_thread.start()
@@ -204,29 +217,13 @@ def flutter_pub_get():
         sys.exit(1)
 
 
-def check_remote_branch():
-    """检查当前分支是否有远程分支"""
-    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    current_branch = result.stdout.decode().strip()
-
-    result = subprocess.run(["git", "ls-remote", "--heads", "origin", current_branch],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    if result.returncode != 0 or not result.stdout:
-        print("⚠️ 当前分支没有远程分支，仅提交到本地。")
-        return False
-    return True
-
-
-def git_commit_and_push():
-    """提交并推送 Git"""
+def git_commit_and_push(branch):
+    """提交变更并推送（如果有远程分支）"""
     if commit_updates:
         full_commit_msg = "\n".join(commit_updates)
         subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"])
         subprocess.run(["git", "commit", "-m", full_commit_msg])
-
-        if check_remote_branch():
+        if has_remote_branch(branch):
             subprocess.run(["git", "push"])
             print("✅ 提交并推送成功！")
         else:
@@ -234,11 +231,12 @@ def git_commit_and_push():
 
 
 def main():
-    git_pull()
+    branch = get_current_branch()
+    git_pull(branch)
     latest_versions = get_latest_packages()
     if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
-        git_commit_and_push()
+        git_commit_and_push(branch)
     else:
         print("❌ 没有更新任何依赖。")
 
