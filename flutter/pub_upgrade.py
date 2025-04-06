@@ -60,7 +60,7 @@ def get_latest_packages():
 
 def compare_versions(v1, v2):
     """语义化版本比较"""
-    parts1, parts2 = [list(map(int, v.replace('^','').split('.'))) for v in (v1, v2)]
+    parts1, parts2 = [list(map(int, v.replace('^', '').split('.'))) for v in (v1, v2)]
     while len(parts1) < len(parts2): parts1.append(0)
     while len(parts2) < len(parts1): parts2.append(0)
     return (parts1 > parts2) - (parts1 < parts2)
@@ -103,7 +103,7 @@ def process_dependency_block(dep_block, latest_versions):
                 new_version = f"^{new_version}"
             print(f"🔄 升级 {dep_name}: {current_version} -> {new_version}")
             commit_updates.append(
-                f"🔄 {dep_name}: {current_version} → {new_version}")  # 记录 commit 信息
+                f"🔄 {dep_name}: {current_version} → {new_version}")
             dep_block[version_line_idx] = f"{match.group(1)}{new_version}\n"
             updated = True
 
@@ -200,19 +200,21 @@ def flutter_pub_get():
     loader_thread.join()
 
     if process.returncode != 0:
-        print(f"\n❌ flutter pub get 失败：{process.stderr.read()}")
+        print(f"\n❌ flutter pub get 失败：{process.stderr}")
         sys.exit(1)
 
 
 def check_remote_branch():
     """检查当前分支是否有远程分支"""
-    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     current_branch = result.stdout.decode().strip()
 
-    result = subprocess.run(["git", "ls-remote", "--heads", "origin", current_branch], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(["git", "ls-remote", "--heads", "origin", current_branch],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if result.returncode != 0 or not result.stdout:
-        print("❌ 当前分支没有远程分支，跳过推送操作！")
+        print("⚠️ 当前分支没有远程分支，仅提交到本地。")
         return False
     return True
 
@@ -227,6 +229,8 @@ def git_commit_and_push():
         if check_remote_branch():
             subprocess.run(["git", "push"])
             print("✅ 提交并推送成功！")
+        else:
+            print("✅ 已提交到本地（未推送）。")
 
 
 def main():
