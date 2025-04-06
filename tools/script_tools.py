@@ -5,6 +5,7 @@ import stat
 import shutil
 import tempfile
 import zipfile
+import hashlib
 from pathlib import Path
 from urllib.request import urlretrieve
 from subprocess import call
@@ -14,15 +15,41 @@ ZIP_URL = "https://github.com/flywithbug/scripts/archive/refs/heads/master.zip" 
 INSTALL_DIR = Path.home() / ".script_tool"
 BIN_DIR = Path.home() / ".local/bin"  # 推荐使用标准 bin 目录
 PLATFORM = sys.platform
+VERSION_FILE = INSTALL_DIR / "version.txt"  # 记录版本的文件
 
 def setup_environment():
     """创建必要目录并设置权限"""
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
+def calculate_version_hash(url):
+    """计算 URL 的哈希值，作为版本标识"""
+    return hashlib.sha256(url.encode('utf-8')).hexdigest()
+
+def get_last_version():
+    """读取记录的上次版本"""
+    if VERSION_FILE.exists():
+        with open(VERSION_FILE, 'r') as f:
+            return f.read().strip()
+    return None
+
+def save_current_version(version_hash):
+    """保存当前版本的哈希值"""
+    with open(VERSION_FILE, 'w') as f:
+        f.write(version_hash)
+
 def download_and_extract_zip():
     """下载 zip 文件并更新 repo 目录的内容"""
     print("下载脚本包...")
+
+    # 计算当前版本的哈希值
+    current_version = calculate_version_hash(ZIP_URL)
+    last_version = get_last_version()
+
+    # 如果版本没有变化，则跳过更新
+    if current_version == last_version:
+        print("版本未更改，跳过更新。")
+        return INSTALL_DIR / "repo"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         zip_path = Path(tmpdir) / "scripts.zip"
@@ -55,6 +82,10 @@ def download_and_extract_zip():
                 shutil.copy2(item, dest)
 
         print("脚本包已更新！")
+
+        # 保存当前版本
+        save_current_version(current_version)
+
         return repo_dir
 
 def create_wrapper(script_path):
@@ -99,7 +130,7 @@ def check_path():
     """检查 PATH 环境变量配置"""
     path_str = os.getenv('PATH', '')
     if str(BIN_DIR) not in path_str.split(os.pathsep):
-        print("\n⚠️  需要将以下目录加入 PATH 环境变量:")
+        print("\n⚠️ 需要将以下目录加入 PATH 环境变量:")
         print(f"  {BIN_DIR}")
 
         if PLATFORM == "win32":
@@ -110,7 +141,7 @@ def check_path():
 
 if __name__ == '__main__':
     setup_environment()
-    repo_path = download_and_extract_zip()
+    repo_path = download_and_extract_zip()  # 下载并更新 repo
     print("开始安装脚本工具...")
     install_commands(repo_path)
 
