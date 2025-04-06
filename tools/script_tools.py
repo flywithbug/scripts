@@ -22,9 +22,13 @@ def setup_environment():
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-def calculate_version_hash(url):
-    """计算 URL 的哈希值，作为版本标识"""
-    return hashlib.sha256(url.encode('utf-8')).hexdigest()
+def calculate_file_hash(file_path):
+    """计算文件的哈希值"""
+    sha256 = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
 
 def get_last_version():
     """读取记录的上次版本"""
@@ -42,19 +46,22 @@ def download_and_extract_zip():
     """下载 zip 文件并更新 repo 目录的内容"""
     print("下载脚本包...")
 
-    # 计算当前版本的哈希值
-    current_version = calculate_version_hash(ZIP_URL)
-    last_version = get_last_version()
-
-    # 如果版本没有变化，则跳过更新
-    if current_version == last_version:
-        print("版本未更改，跳过更新。")
-        return None  # 直接返回 None，跳过后续操作
-
     with tempfile.TemporaryDirectory() as tmpdir:
         zip_path = Path(tmpdir) / "scripts.zip"
         urlretrieve(ZIP_URL, zip_path)
 
+        print("计算下载文件的哈希值...")
+        current_version = calculate_file_hash(zip_path)
+        last_version = get_last_version()
+        print(f"当前版本哈希: {current_version}")
+        print(f"上次版本哈希: {last_version}")
+
+        # 如果版本没有变化，则跳过更新
+        if current_version == last_version:
+            print("版本未更改，跳过更新。")
+            return None  # 直接返回 None，跳过后续操作
+
+        # 解压脚本包
         print("解压脚本包...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(tmpdir)
