@@ -49,7 +49,7 @@ def download_and_extract_zip():
     # 如果版本没有变化，则跳过更新
     if current_version == last_version:
         print("版本未更改，跳过更新。")
-        return INSTALL_DIR / "repo"
+        return None  # 直接返回 None，跳过后续操作
 
     with tempfile.TemporaryDirectory() as tmpdir:
         zip_path = Path(tmpdir) / "scripts.zip"
@@ -109,6 +109,10 @@ exec python3 "{script_path}" "$@"
 
 def install_commands(repo_path):
     """安装所有工具命令"""
+    if repo_path is None:
+        print("跳过安装命令，因为没有更新。")
+        return
+
     tool_dirs = [
         repo_path / "flutter",   # 示例工具目录
         repo_path / "tools"      # 其他工具目录
@@ -142,12 +146,15 @@ def check_path():
 if __name__ == '__main__':
     setup_environment()
     repo_path = download_and_extract_zip()  # 下载并更新 repo
-    print("开始安装脚本工具...")
-    install_commands(repo_path)
+    if repo_path:  # 如果有更新
+        print("开始安装脚本工具...")
+        install_commands(repo_path)
 
-    print("\n✅ 安装完成！可用命令列表:")
-    for cmd in BIN_DIR.glob("*"):
-        if not cmd.name.startswith('.'):
-            print(f"  {cmd.name}")
+        print("\n✅ 安装完成！可用命令列表:")
+        for cmd in BIN_DIR.glob("*"):
+            if not cmd.name.startswith('.'):
+                print(f"  {cmd.name}")
+    else:
+        print("❌ 没有版本更新，跳过后续操作。")
 
     check_path()
