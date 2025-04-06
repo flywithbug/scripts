@@ -155,6 +155,6 @@ if __name__ == '__main__':
             if not cmd.name.startswith('.'):
                 print(f"  {cmd.name}")
     else:
-        print("❌ 没有版本更新，跳过后续操作。")
+        print("✅ 已经是最新版本")
 
     check_path()
