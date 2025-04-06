@@ -51,12 +51,14 @@ def download_and_extract_zip():
     with tempfile.TemporaryDirectory() as tmpdir:
         zip_path = Path(tmpdir) / "scripts.zip"
         urlretrieve(ZIP_URL, zip_path)
+        print(f"📥 下载完成: {zip_path}")
 
         print("📂 解压脚本包...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(tmpdir)
 
         extracted_folder = next(Path(tmpdir).glob("scripts-*"))
+        print(f"📁 解压路径: {extracted_folder}")
 
         # 清空 repo_dir
         for item in REPO_DIR.iterdir() if REPO_DIR.exists() else []:
@@ -73,7 +75,7 @@ def download_and_extract_zip():
             else:
                 shutil.copy2(item, dest)
 
-        print("✅ 脚本包已更新！")
+        print(f"✅ 脚本包已更新到: {REPO_DIR}")
         return REPO_DIR
 
 def create_wrapper(script_path):
@@ -92,6 +94,8 @@ exec python3 "{script_path}" "$@"
 
     if PLATFORM != "win32":
         wrapper.chmod(0o755)
+
+    print(f"    🔗 已连接: {wrapper} -> {script_path}")
 
 def install_commands(repo_path):
     tool_dirs = [
