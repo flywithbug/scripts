@@ -204,14 +204,29 @@ def flutter_pub_get():
         sys.exit(1)
 
 
+def check_remote_branch():
+    """检查当前分支是否有远程分支"""
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    current_branch = result.stdout.decode().strip()
+
+    result = subprocess.run(["git", "ls-remote", "--heads", "origin", current_branch], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    if result.returncode != 0 or not result.stdout:
+        print("❌ 当前分支没有远程分支，跳过推送操作！")
+        return False
+    return True
+
+
 def git_commit_and_push():
     """提交并推送 Git"""
     if commit_updates:
         full_commit_msg = "\n".join(commit_updates)
         subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"])
         subprocess.run(["git", "commit", "-m", full_commit_msg])
-        subprocess.run(["git", "push"])
-        print("✅ 提交并推送成功！")
+
+        if check_remote_branch():
+            subprocess.run(["git", "push"])
+            print("✅ 提交并推送成功！")
 
 
 def main():
