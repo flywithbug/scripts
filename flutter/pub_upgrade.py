@@ -15,9 +15,21 @@ API_URL = os.getenv("cloudsmithApiUrl")
 PRIVATE_URL_PREFIX = os.getenv("cloudsmithPrivateUrl")
 
 # 解析命令行参数
-parser = argparse.ArgumentParser(description="自动更新私有依赖并提交 Git。")
-parser.add_argument("commit_message", nargs="?", default="up deps", help="Git 提交信息")
-parser.add_argument("--no-commit", action="store_true", help="只更新依赖，不提交到 Git")
+parser = argparse.ArgumentParser(
+    description="🛠 自动检查并更新 pubspec.yaml 中的私有依赖版本，并执行 Git 提交。",
+    epilog="示例：python3 update_deps.py \"更新依赖版本\" --no-commit"
+)
+parser.add_argument(
+    "commit_message",
+    nargs="?",
+    default="up deps",
+    help="Git 提交信息（默认为 'up deps'）"
+)
+parser.add_argument(
+    "--no-commit",
+    action="store_true",
+    help="只更新依赖但不提交到 Git"
+)
 args = parser.parse_args()
 
 commit_message = args.commit_message
