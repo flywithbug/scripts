@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from itertools import cycle
-
+import argparse
 import requests
 
 # 从环境变量获取 API_KEY、API_URL 和 PRIVATE_URL_PREFIX
@@ -14,8 +14,14 @@ API_KEY = os.getenv("cloudsmithApiKey")
 API_URL = os.getenv("cloudsmithApiUrl")
 PRIVATE_URL_PREFIX = os.getenv("cloudsmithPrivateUrl")
 
-# 获取提交信息，默认为 "up deps"
-commit_message = sys.argv[1] if len(sys.argv) > 1 else "up deps"
+# 解析命令行参数
+parser = argparse.ArgumentParser(description="自动更新私有依赖并提交 Git。")
+parser.add_argument("commit_message", nargs="?", default="up deps", help="Git 提交信息")
+parser.add_argument("--no-commit", action="store_true", help="只更新依赖，不提交到 Git")
+args = parser.parse_args()
+
+commit_message = args.commit_message
+no_commit = args.no_commit
 commit_updates = []  # 存储依赖更新日志
 
 # 检查环境变量
@@ -31,21 +37,18 @@ if not PRIVATE_URL_PREFIX:
 
 
 def get_current_branch():
-    """获取当前分支名称"""
-    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return result.stdout.decode().strip()
 
 
 def has_remote_branch(branch_name):
-    """检查当前分支是否有远程分支"""
     result = subprocess.run(["git", "ls-remote", "--heads", "origin", branch_name],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return bool(result.stdout)
 
 
 def git_pull(branch):
-    """如果当前分支有远程分支，则拉取更新"""
     if has_remote_branch(branch):
         print(f"⬇️ 正在拉取远程分支 {branch}...")
         result = subprocess.run(["git", "pull"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -58,7 +61,6 @@ def git_pull(branch):
 
 
 def get_latest_packages():
-    """获取私有仓库最新包版本"""
     headers = {"X-Api-Key": API_KEY, "accept": "application/json"}
     response = requests.get(API_URL, headers=headers)
     response.raise_for_status()
@@ -75,7 +77,6 @@ def get_latest_packages():
 
 
 def compare_versions(v1, v2):
-    """语义化版本比较"""
     parts1, parts2 = [list(map(int, v.replace('^', '').split('.'))) for v in (v1, v2)]
     while len(parts1) < len(parts2): parts1.append(0)
     while len(parts2) < len(parts1): parts2.append(0)
@@ -83,7 +84,6 @@ def compare_versions(v1, v2):
 
 
 def process_dependency_block(dep_block, latest_versions):
-    """解析并更新依赖块"""
     dep_name = None
     version_line_idx = -1
     updated = False
@@ -126,7 +126,6 @@ def process_dependency_block(dep_block, latest_versions):
 
 
 def update_pubspec(pubspec_file, latest_versions):
-    """更新 pubspec.yaml 中的私有库"""
     with open(pubspec_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
@@ -218,9 +217,8 @@ def flutter_pub_get():
 
 
 def git_commit_and_push(branch):
-    """提交变更并推送（如果有远程分支）"""
     if commit_updates:
-        full_commit_msg = "\n".join(commit_updates)
+        full_commit_msg = commit_message + "\n\n" + "\n".join(commit_updates)
         subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"])
         subprocess.run(["git", "commit", "-m", full_commit_msg])
         if has_remote_branch(branch):
@@ -236,7 +234,10 @@ def main():
     latest_versions = get_latest_packages()
     if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
-        git_commit_and_push(branch)
+        if not no_commit:
+            git_commit_and_push(branch)
+        else:
+            print("📦 已更新依赖，但未提交到 Git（--no-commit）。")
     else:
         print("❌ 没有更新任何依赖。")
 
