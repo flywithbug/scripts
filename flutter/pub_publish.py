@@ -108,10 +108,10 @@ def main():
     parser = argparse.ArgumentParser(description="自动更新版本，提交 Git 并发布 Flutter 包")
     parser.add_argument("--pubspec", default="pubspec.yaml", help="pubspec.yaml 文件路径")
     parser.add_argument("--changelog", default="CHANGELOG.md", help="CHANGELOG.md 文件路径")
-    parser.add_argument("--msg", nargs="+", default=["更新版本"], help="更新说明内容（不需要引号）")
+    parser.add_argument("--msg", nargs="+", required=True, help="更新说明内容（不需要引号）")
     args = parser.parse_args()
 
-    msg_text = " ".join(args.msg)  # 多词拼接
+    msg_text = " ".join(args.msg)
 
     git_pull()
 
