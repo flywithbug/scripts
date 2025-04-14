@@ -2,15 +2,13 @@
 import os
 import sys
 import shutil
-import tempfile
-import zipfile
 from pathlib import Path
-from urllib.request import urlretrieve, urlopen
+from subprocess import run, PIPE
 
 # 配置参数
 REPO_OWNER = "flywithbug"
 REPO_NAME = "scripts"
-ZIP_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/archive/refs/heads/master.zip"
+REPO_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 
 INSTALL_DIR = Path.home() / ".script_tool"
 REPO_DIR = INSTALL_DIR / "repo"
@@ -18,44 +16,29 @@ VERSION_FILE = INSTALL_DIR / ".version"
 BIN_DIR = Path.home() / ".local/bin"
 PLATFORM = sys.platform
 
-
 def setup_environment():
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-def download_and_extract_zip():
-    """下载 zip 文件并更新 repo 目录的内容"""
-    print("📦 正在下载脚本包...")
+def clone_repo():
+    if REPO_DIR.exists():
+        shutil.rmtree(REPO_DIR)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        zip_path = Path(tmpdir) / "scripts.zip"
-        urlretrieve(ZIP_URL, zip_path)
-        print(f"📥 下载完成: {zip_path}")
+    print("🔄 克隆工具仓库...")
+    result = run(["git", "clone", REPO_URL, str(REPO_DIR)], stdout=PIPE, stderr=PIPE)
+    if result.returncode != 0:
+        print("❌ 仓库克隆失败：", result.stderr.decode())
+        sys.exit(1)
+    print("✅ 仓库克隆成功！")
 
-        print("📂 解压脚本包...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(tmpdir)
+    # 获取 commit hash
+    os.chdir(REPO_DIR)
+    result = run(["git", "rev-parse", "HEAD"], stdout=PIPE)
+    commit_hash = result.stdout.decode().strip()
+    VERSION_FILE.write_text(commit_hash)
+    print(f"📦 当前版本: {commit_hash}")
 
-        extracted_folder = next(Path(tmpdir).glob("scripts-*"))
-        print(f"📁 解压路径: {extracted_folder}")
-
-        # 清空 repo_dir
-        for item in REPO_DIR.iterdir() if REPO_DIR.exists() else []:
-            if item.is_file() or item.is_symlink():
-                item.unlink()
-            elif item.is_dir():
-                shutil.rmtree(item)
-
-        # 复制新内容
-        for item in extracted_folder.iterdir():
-            dest = REPO_DIR / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest)
-            else:
-                shutil.copy2(item, dest)
-
-        print(f"✅ 脚本包已更新到: {REPO_DIR}")
-        return REPO_DIR
+    return REPO_DIR
 
 def create_wrapper(script_path):
     cmd_name = script_path.stem
@@ -77,10 +60,7 @@ exec python3 "{script_path}" "$@"
     print(f"    🔗 已连接: {wrapper} -> {script_path}")
 
 def install_commands(repo_path):
-    tool_dirs = [
-        repo_path / "flutter",
-        repo_path / "tools"
-    ]
+    tool_dirs = [repo_path / "flutter", repo_path / "tools"]
 
     for tool_dir in tool_dirs:
         if not tool_dir.exists():
@@ -102,15 +82,14 @@ def check_path():
             print(f"\n👉 执行命令: setx PATH \"%PATH%;{BIN_DIR}\"")
         else:
             print(f"\n👉 添加以下内容到 ~/.bashrc 或 ~/.zshrc:")
-            print(f'export PATH="$PATH:{BIN_DIR}"')
+            print(f'export PATH="$PATH:{BIN_DIR}')
 
 def main():
     setup_environment()
 
-    repo_path = download_and_extract_zip()
+    repo_path = clone_repo()
     print("🔧 安装脚本工具中...")
     install_commands(repo_path)
-
 
     print("\n📌 当前可用命令:")
     for cmd in BIN_DIR.glob("*"):
@@ -121,5 +100,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
