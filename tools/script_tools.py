@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 import os
 import sys
-import stat
 import shutil
 import tempfile
 import zipfile
-import json
 from pathlib import Path
 from urllib.request import urlretrieve, urlopen
-from subprocess import call
 
 # 配置参数
 REPO_OWNER = "flywithbug"
 REPO_NAME = "scripts"
 ZIP_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/archive/refs/heads/master.zip"
-COMMIT_API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/master"
 
 INSTALL_DIR = Path.home() / ".script_tool"
 REPO_DIR = INSTALL_DIR / "repo"
@@ -22,23 +18,6 @@ VERSION_FILE = INSTALL_DIR / ".version"
 BIN_DIR = Path.home() / ".local/bin"
 PLATFORM = sys.platform
 
-def get_latest_commit_hash():
-    """获取 GitHub 仓库 master 分支的最新 commit hash"""
-    try:
-        with urlopen(COMMIT_API_URL) as response:
-            data = json.load(response)
-            return data['sha']
-    except Exception as e:
-        print(f"❌ 获取最新 commit 失败: {e}")
-        return None
-
-def get_local_commit_hash():
-    if VERSION_FILE.exists():
-        return VERSION_FILE.read_text().strip()
-    return None
-
-def save_local_commit_hash(commit_hash):
-    VERSION_FILE.write_text(commit_hash)
 
 def setup_environment():
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
@@ -128,17 +107,10 @@ def check_path():
 def main():
     setup_environment()
 
-    latest_commit = get_latest_commit_hash()
-    local_commit = get_local_commit_hash()
+    repo_path = download_and_extract_zip()
+    print("🔧 安装脚本工具中...")
+    install_commands(repo_path)
 
-    if latest_commit and latest_commit == local_commit:
-        print("✅ 已是最新版本，无需更新。")
-    else:
-        repo_path = download_and_extract_zip()
-        print("🔧 安装脚本工具中...")
-        install_commands(repo_path)
-        if latest_commit:
-            save_local_commit_hash(latest_commit)
 
     print("\n📌 当前可用命令:")
     for cmd in BIN_DIR.glob("*"):
