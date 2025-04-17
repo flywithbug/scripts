@@ -71,15 +71,15 @@ def git_pull(branch):
     else:
         print("⚠️ 当前分支没有远程分支，跳过拉取。")
 
-def is_valid_version(version: str) -> bool:
+def is_valid_version(version) -> bool:
     """
     判断版本号是否有效，只允许包含数字和点（.）
-    :param version: 版本号字符串
-    :return: 如果版本号有效，返回 True；否则返回 False
+    :param version: 版本号（任意类型）
+    :return: 如果版本号有效（为字符串，且只包含数字和点），返回 True；否则返回 False
     """
-    # 检查版本号是否只包含数字和点（.）
+    if not isinstance(version, str):
+        return False
     return bool(re.fullmatch(r"^[0-9.]+$", version.strip()))
-
 
 def get_latest_packages():
     headers = {"X-Api-Key": API_KEY, "accept": "application/json"}
