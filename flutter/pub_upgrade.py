@@ -9,10 +9,14 @@ from itertools import cycle
 import argparse
 import requests
 
-# 从环境变量获取 API_KEY、API_URL 和 PRIVATE_URL_PREFIX
+# 从环境变量获取 API_KEY
 API_KEY = os.getenv("cloudsmithApiKey")
-API_URL = os.getenv("cloudsmithApiUrl")
-PRIVATE_URL_PREFIX = os.getenv("cloudsmithPrivateUrl")
+
+BASE_URL = "https://api.cloudsmith.io/v1"
+Smith_Owner = 'apex-dao-llc'
+Smith_Repo = 'app'
+PRIVATE_URL_PREFIX = f'https://dart.cloudsmith.io/{Smith_Owner}/{Smith_Repo}/'
+
 
 # 解析命令行参数
 parser = argparse.ArgumentParser(
@@ -39,12 +43,6 @@ commit_updates = []  # 存储依赖更新日志
 # 检查环境变量
 if not API_KEY:
     print("❌ 环境变量 cloudsmithApiKey 未设置！")
-    exit(1)
-if not API_URL:
-    print("❌ 环境变量 cloudsmithApiUrl 未设置！")
-    exit(1)
-if not PRIVATE_URL_PREFIX:
-    print("❌ 环境变量 cloudsmithPrivateUrl 未设置！")
     exit(1)
 
 
@@ -83,7 +81,7 @@ def is_valid_version(version) -> bool:
 
 def get_latest_packages():
     headers = {"X-Api-Key": API_KEY, "accept": "application/json"}
-    response = requests.get(API_URL, headers=headers)
+    response = requests.get(f'{BASE_URL}/packages/{Smith_Owner}/{Smith_Repo}?sort=-date', headers=headers)
     response.raise_for_status()
     packages = response.json()
     latest_versions = {}
