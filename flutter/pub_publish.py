@@ -8,10 +8,16 @@ import subprocess
 def run_command(command):
     """执行命令行命令，遇到错误时报错"""
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
         print(f"执行命令失败: {' '.join(command)}")
+        print(f"错误信息: {e.stderr}")
         exit(1)
+
+def get_current_branch():
+    """获取当前 Git 分支名称"""
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True)
+    return result.stdout.strip()
 
 def git_pull():
     """拉取最新代码"""
@@ -19,18 +25,35 @@ def git_pull():
     run_command(["git", "pull"])
     print("代码已更新。")
 
-def increment_version(version):
-    """版本号自增"""
-    parts = version.strip().split('.')
+def compare_versions(current_version, target_version):
+    """比较两个版本号，返回 -1（小于）、0（等于）、1（大于）"""
+    current_parts = list(map(int, current_version.split('.')))
+    target_parts = list(map(int, target_version.split('.')))
+
+    for i in range(3):  # 比较 MAJOR, MINOR, PATCH
+        if current_parts[i] < target_parts[i]:
+            return -1
+        elif current_parts[i] > target_parts[i]:
+            return 1
+    return 0
+
+def update_version(current_version, branch_version=None):
+    """根据分支和当前版本号更新版本号"""
+    if branch_version:
+        # 分支是 release-X.Y.Z 格式
+        if compare_versions(current_version, branch_version) < 0:
+            # 当前版本低于分支版本，直接使用分支版本
+            return branch_version
+        elif compare_versions(current_version, branch_version) == 0:
+            # 当前版本等于分支版本，递增补丁号
+            parts = current_version.split('.')
+            major, minor, patch = map(int, parts)
+            return f"{major}.{minor}.{patch + 1}"
+
+    # 非 release 分支，递增补丁号
+    parts = current_version.split('.')
     major, minor, patch = map(int, parts)
-
-    if patch < 99:
-        patch += 1
-    else:
-        patch = 0
-        minor += 1
-
-    return f"{major}.{minor}.{patch}"
+    return f"{major}.{minor}.{patch + 1}"
 
 def extract_project_name(pubspec_path):
     """从 pubspec.yaml 提取项目名称"""
@@ -55,15 +78,23 @@ def update_pubspec_preserve_format(pubspec_path):
         print("未在 pubspec.yaml 中找到 version 字段。")
         return None, None
 
-    new_version = increment_version(match.group("version"))
+    current_version = match.group("version")
+    # 检查当前分支是否为 release-X.Y.Z
+    current_branch = get_current_branch()
+    branch_version = None
+    branch_match = re.match(r"^release-(\d+\.\d+\.\d+)$", current_branch)
+    if branch_match:
+        branch_version = branch_match.group(1)
+
+    new_version = update_version(current_version, branch_version)
     replacement = f"{match.group('prefix')}{match.group('quote')}{new_version}{match.group('quote')}"
     new_content = re.sub(pattern, replacement, content, count=1, flags=re.MULTILINE)
 
     with open(pubspec_path, 'w', encoding='utf-8') as f:
         f.write(new_content)
 
-    print(f"版本号已更新: {match.group('version')} -> {new_version}")
-    return new_version, match.group("version")
+    print(f"版本号已更新: {current_version} -> {new_version}")
+    return new_version, current_version
 
 def update_changelog(changelog_path, new_version, msg):
     """更新 CHANGELOG.md"""
