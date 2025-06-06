@@ -27,6 +27,8 @@ def get_latest_ap_packages():
         pkg_name = pkg_info.get("package")
         if not pkg_name.startswith("ap_"):
             continue
+        if pkg_name.startswith("ap_recaptcha"):
+            continue
 
         current = pkg_info.get("current", {}).get("version")
         latest = pkg_info.get("latest", {}).get("version")
