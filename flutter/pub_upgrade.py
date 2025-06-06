@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import re
 import subprocess
 import sys
@@ -7,15 +6,36 @@ import threading
 import time
 from itertools import cycle
 import argparse
-import requests
+import json
 
-# 从环境变量获取 API_KEY
-API_KEY = os.getenv("cloudsmithApiKey")
 
-BASE_URL = "https://api.cloudsmith.io/v1"
-Smith_Owner = 'apex-dao-llc'
-Smith_Repo = 'app'
-PRIVATE_URL_PREFIX = f'https://dart.cloudsmith.io/{Smith_Owner}/{Smith_Repo}/'
+def get_latest_ap_packages():
+    result = subprocess.run(
+        ["flutter", "pub", "outdated", "--json"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print("❌ flutter pub outdated 失败")
+        print(result.stderr)
+        exit(1)
+
+    data = json.loads(result.stdout)
+    outdated = {}
+
+    for pkg_info in data.get("packages", []):
+        pkg_name = pkg_info.get("package")
+        if not pkg_name.startswith("ap_"):
+            continue
+
+        current = pkg_info.get("current", {}).get("version")
+        latest = pkg_info.get("latest", {}).get("version")
+
+        if is_valid_version(current) and is_valid_version(latest):
+            if compare_versions(latest, current) > 0:
+                outdated[pkg_name] = latest
+
+    return outdated
 
 
 # 解析命令行参数
@@ -39,11 +59,6 @@ args = parser.parse_args()
 commit_message = args.commit_message
 no_commit = args.no_commit
 commit_updates = []  # 存储依赖更新日志
-
-# 检查环境变量
-if not API_KEY:
-    print("❌ 环境变量 cloudsmithApiKey 未设置！")
-    exit(1)
 
 
 def get_current_branch():
@@ -69,6 +84,7 @@ def git_pull(branch):
     else:
         print("⚠️ 当前分支没有远程分支，跳过拉取。")
 
+
 def is_valid_version(version) -> bool:
     """
     判断版本号是否有效，只允许包含数字和点（.）
@@ -79,25 +95,13 @@ def is_valid_version(version) -> bool:
         return False
     return bool(re.fullmatch(r"^[0-9.]+$", version.strip()))
 
-def get_latest_packages():
-    headers = {"X-Api-Key": API_KEY, "accept": "application/json"}
-    response = requests.get(f'{BASE_URL}/packages/{Smith_Owner}/{Smith_Repo}?sort=-date', headers=headers)
-    response.raise_for_status()
-    packages = response.json()
-    latest_versions = {}
-
-    for pkg in packages:
-        name, version = pkg["name"], pkg["version"]
-        if is_valid_version(version):
-            if name not in latest_versions or compare_versions(version, latest_versions[name]) == 1:
-                latest_versions[name] = version
-    return latest_versions
-
 
 def compare_versions(v1, v2):
     parts1, parts2 = [list(map(int, v.replace('^', '').split('.'))) for v in (v1, v2)]
-    while len(parts1) < len(parts2): parts1.append(0)
-    while len(parts2) < len(parts1): parts2.append(0)
+    while len(parts1) < len(parts2):
+        parts1.append(0)
+    while len(parts2) < len(parts1):
+        parts2.append(0)
     return (parts1 > parts2) - (parts1 < parts2)
 
 
@@ -107,16 +111,12 @@ def process_dependency_block(dep_block, latest_versions):
     updated = False
 
     for line in dep_block:
-        match = re.match(r'^( {2})(\S+):', line)
+        match = re.match(r'^\s{2}(\S+):', line)
         if match:
-            dep_name = match.group(2)
-
-        if "hosted:" in line and PRIVATE_URL_PREFIX in "".join(dep_block):
+            dep_name = match.group(1)
             break
-    else:
-        return dep_block, updated
 
-    if dep_name not in latest_versions:
+    if dep_name is None or dep_name not in latest_versions:
         return dep_block, updated
 
     new_version = latest_versions[dep_name]
@@ -237,10 +237,10 @@ def flutter_pub_get():
 def git_commit_and_push(branch):
     if commit_updates:
         full_commit_msg = commit_message + "\n\n" + "\n".join(commit_updates)
-        subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"])
-        subprocess.run(["git", "commit", "-m", full_commit_msg])
+        subprocess.run(["git", "add", "pubspec.yaml", "pubspec.lock"], check=True)
+        subprocess.run(["git", "commit", "-m", full_commit_msg], check=True)
         if has_remote_branch(branch):
-            subprocess.run(["git", "push"])
+            subprocess.run(["git", "push"], check=True)
             print("✅ 提交并推送成功！")
         else:
             print("✅ 已提交到本地（未推送）。")
@@ -249,7 +249,7 @@ def git_commit_and_push(branch):
 def main():
     branch = get_current_branch()
     git_pull(branch)
-    latest_versions = get_latest_packages()
+    latest_versions = get_latest_ap_packages()
     if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
         if not no_commit:
