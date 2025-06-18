@@ -2,6 +2,7 @@
 import re
 import subprocess
 from pathlib import Path
+import sys
 
 
 def parse_version_string(version_str):
@@ -73,7 +74,12 @@ def main():
     print("1 - 次版本号（minor）升级 → X.*Y*.0")
     print("2 - 补丁号（patch）升级 → X.Y.*Z*")
 
-    level = input("请输入 1 或 2: ").strip()
+    # 新增：支持命令行参数
+    if len(sys.argv) > 1 and sys.argv[1] in ("1", "2"):
+        level = sys.argv[1]
+        print(f"已通过参数输入升级级别: {level}")
+    else:
+        level = input("请输入 1 或 2: ").strip()
     if level not in ("1", "2"):
         print("❌ 无效输入")
         return
