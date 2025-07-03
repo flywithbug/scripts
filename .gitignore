@@ -1,0 +1,105 @@
+# Python字节码文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C扩展模块
+*.so
+
+# 构建、打包相关文件
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller生成的文件
+*.manifest
+*.spec
+
+# 安装器日志
+pip-log.txt
+pip-delete-this-directory.txt
+
+# 测试及覆盖率报告
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# 翻译文件
+*.mo
+*.pot
+
+# Django相关文件
+*.log
+local_settings.py
+db.sqlite3
+
+# Flask相关
+instance/
+.webassets-cache
+
+# Scrapy相关
+.scrapy
+
+# Sphinx文档生成
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook检查点
+.ipynb_checkpoints
+
+# IPython配置
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Celery节拍调度文件
+celerybeat-schedule
+
+# 环境变量文件及虚拟环境目录
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder项目设置
+.spyderproject
+.spyproject
+
+# Rope项目设置
+.ropeproject
+
+# 常用IDE或编辑器文件
+.vscode/
+.idea/
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
