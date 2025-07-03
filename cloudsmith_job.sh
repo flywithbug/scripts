@@ -10,7 +10,7 @@ echo "🧹 开始清理 Cloudsmith 仓库: $ORG/$REPO"
 echo "📅 删除上传时间早于 $CUTOFF_DATE 的包..."
 echo "🧪 Dry-Run 模式: $DRY_RUN"
 
-PAGE=130
+PAGE=100
 HAS_MORE=true
 
 while $HAS_MORE; do
