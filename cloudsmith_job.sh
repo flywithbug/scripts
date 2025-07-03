@@ -3,14 +3,14 @@
 # === 配置项 ===
 ORG="apex-dao-llc"
 REPO="app"
-CUTOFF_DATE="2024-01-01T00:00:00Z"  # 删除早于此时间的包
+CUTOFF_DATE="2024-06-06T00:00:00Z"  # 删除早于此时间的包
 DRY_RUN=false   # 改为 true 可仅打印不执行删除
 
 echo "🧹 开始清理 Cloudsmith 仓库: $ORG/$REPO"
 echo "📅 删除上传时间早于 $CUTOFF_DATE 的包..."
 echo "🧪 Dry-Run 模式: $DRY_RUN"
 
-PAGE=200
+PAGE=130
 HAS_MORE=true
 
 while $HAS_MORE; do
