@@ -8,6 +8,38 @@ from itertools import cycle
 import argparse
 import json
 
+
+def get_latest_ap_packages():
+    result = subprocess.run(
+        ["flutter", "pub", "outdated", "--json"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print("❌ flutter pub outdated 失败")
+        print(result.stderr)
+        exit(1)
+
+    data = json.loads(result.stdout)
+    outdated = {}
+
+    for pkg_info in data.get("packages", []):
+        pkg_name = pkg_info.get("package")
+        if not pkg_name.startswith("ap_"):
+            continue
+        if pkg_name.startswith("ap_recaptcha"):
+            continue
+
+        current = pkg_info.get("current", {}).get("version")
+        latest = pkg_info.get("latest", {}).get("version")
+
+        if is_valid_version(current) and is_valid_version(latest):
+            if compare_versions(latest, current) > 0:
+                outdated[pkg_name] = latest
+
+    return outdated
+
+
 # 解析命令行参数
 parser = argparse.ArgumentParser(
     description="🛠 自动检查并更新 pubspec.yaml 中的私有依赖版本，并执行 Git 提交。",
@@ -55,17 +87,12 @@ def git_pull(branch):
         print("⚠️ 当前分支没有远程分支，跳过拉取。")
 
 
-def get_release_version_prefix(branch_name: str) -> str | None:
-    """
-    如果是 release-* 分支，返回如 '3.21' 的版本前缀；否则返回 None。
-    """
-    match = re.match(r"release-(\d+)\.(\d+)", branch_name)
-    if match:
-        return f"{match.group(1)}.{match.group(2)}"
-    return None
-
-
 def is_valid_version(version) -> bool:
+    """
+    判断版本号是否有效，只允许包含数字和点（.）
+    :param version: 版本号（任意类型）
+    :return: 如果版本号有效（为字符串，且只包含数字和点），返回 True；否则返回 False
+    """
     if not isinstance(version, str):
         return False
     return bool(re.fullmatch(r"^[0-9.]+$", version.strip()))
@@ -78,42 +105,6 @@ def compare_versions(v1, v2):
     while len(parts2) < len(parts1):
         parts2.append(0)
     return (parts1 > parts2) - (parts1 < parts2)
-
-
-def get_latest_ap_packages(version_prefix: str = None):
-    result = subprocess.run(
-        ["flutter", "pub", "outdated", "--json"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print("❌ flutter pub outdated 失败")
-        print(result.stderr)
-        exit(1)
-
-    data = json.loads(result.stdout)
-    outdated = {}
-
-    for pkg_info in data.get("packages", []):
-        pkg_name = pkg_info.get("package")
-        if not pkg_name.startswith("ap_"):
-            continue
-        if pkg_name.startswith("ap_recaptcha"):
-            continue
-
-        current = pkg_info.get("current", {}).get("version")
-        latest = pkg_info.get("latest", {}).get("version")
-
-        if not (is_valid_version(current) and is_valid_version(latest)):
-            continue
-
-        if version_prefix and not latest.startswith(version_prefix + "."):
-            continue
-
-        if compare_versions(latest, current) > 0:
-            outdated[pkg_name] = latest
-
-    return outdated
 
 
 def process_dependency_block(dep_block, latest_versions):
@@ -260,10 +251,7 @@ def git_commit_and_push(branch):
 def main():
     branch = get_current_branch()
     git_pull(branch)
-    version_prefix = get_release_version_prefix(branch)
-    if version_prefix:
-        print(f"📦 当前为 release 分支，只允许更新 {version_prefix}.* 版本的依赖")
-    latest_versions = get_latest_ap_packages(version_prefix)
+    latest_versions = get_latest_ap_packages()
     if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
         if not no_commit:
