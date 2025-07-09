@@ -8,42 +8,18 @@ from itertools import cycle
 import argparse
 import json
 
-
-def get_latest_ap_packages():
-    result = subprocess.run(
-        ["flutter", "pub", "outdated", "--json"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        print("❌ flutter pub outdated 失败")
-        print(result.stderr)
-        exit(1)
-
-    data = json.loads(result.stdout)
-    outdated = {}
-
-    for pkg_info in data.get("packages", []):
-        pkg_name = pkg_info.get("package")
-        if not pkg_name.startswith("ap_"):
-            continue
-        if pkg_name.startswith("ap_recaptcha"):
-            continue
-
-        current = pkg_info.get("current", {}).get("version")
-        latest = pkg_info.get("latest", {}).get("version")
-
-        if is_valid_version(current) and is_valid_version(latest):
-            if compare_versions(latest, current) > 0:
-                outdated[pkg_name] = latest
-
-    return outdated
-
-
-# 解析命令行参数
+# =======================
+# Argument Parser
+# =======================
 parser = argparse.ArgumentParser(
     description="🛠 自动检查并更新 pubspec.yaml 中的私有依赖版本，并执行 Git 提交。",
-    epilog="示例：python3 update_deps.py \"更新依赖版本\" --no-commit"
+    epilog="""
+示例：
+  python3 update_deps.py "更新依赖版本"
+  python3 update_deps.py "更新依赖版本" --no-commit
+  python3 update_deps.py "仅更新 release 补丁" --strict-release
+    """,
+    formatter_class=argparse.RawDescriptionHelpFormatter
 )
 parser.add_argument(
     "commit_message",
@@ -56,13 +32,22 @@ parser.add_argument(
     action="store_true",
     help="只更新依赖但不提交到 Git"
 )
+parser.add_argument(
+    "--strict-release",
+    action="store_true",
+    help="如果当前是 release-* 分支，仅更新对应次版本（如 3.21.*）依赖"
+)
 args = parser.parse_args()
 
 commit_message = args.commit_message
 no_commit = args.no_commit
-commit_updates = []  # 存储依赖更新日志
+strict_release = args.strict_release
+commit_updates = []
 
 
+# =======================
+# Git Functions
+# =======================
 def get_current_branch():
     result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -87,12 +72,17 @@ def git_pull(branch):
         print("⚠️ 当前分支没有远程分支，跳过拉取。")
 
 
+# =======================
+# Version Utilities
+# =======================
+def get_release_version_prefix(branch_name: str) -> str | None:
+    match = re.match(r"release-(\d+)\.(\d+)", branch_name)
+    if match:
+        return f"{match.group(1)}.{match.group(2)}"
+    return None
+
+
 def is_valid_version(version) -> bool:
-    """
-    判断版本号是否有效，只允许包含数字和点（.）
-    :param version: 版本号（任意类型）
-    :return: 如果版本号有效（为字符串，且只包含数字和点），返回 True；否则返回 False
-    """
     if not isinstance(version, str):
         return False
     return bool(re.fullmatch(r"^[0-9.]+$", version.strip()))
@@ -107,6 +97,48 @@ def compare_versions(v1, v2):
     return (parts1 > parts2) - (parts1 < parts2)
 
 
+# =======================
+# Outdated Dependency Fetcher
+# =======================
+def get_latest_ap_packages(version_prefix: str = None):
+    result = subprocess.run(
+        ["flutter", "pub", "outdated", "--json"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print("❌ flutter pub outdated 失败")
+        print(result.stderr)
+        exit(1)
+
+    data = json.loads(result.stdout)
+    outdated = {}
+
+    for pkg_info in data.get("packages", []):
+        pkg_name = pkg_info.get("package")
+        if not pkg_name.startswith("ap_"):
+            continue
+        if pkg_name.startswith("ap_recaptcha"):
+            continue
+
+        current = pkg_info.get("current", {}).get("version")
+        latest = pkg_info.get("latest", {}).get("version")
+
+        if not (is_valid_version(current) and is_valid_version(latest)):
+            continue
+
+        if version_prefix and not latest.startswith(version_prefix + "."):
+            continue
+
+        if compare_versions(latest, current) > 0:
+            outdated[pkg_name] = latest
+
+    return outdated
+
+
+# =======================
+# pubspec.yaml Modifier
+# =======================
 def process_dependency_block(dep_block, latest_versions):
     dep_name = None
     version_line_idx = -1
@@ -211,6 +243,9 @@ def update_pubspec(pubspec_file, latest_versions):
     return any_update
 
 
+# =======================
+# flutter pub get
+# =======================
 def loading_animation(stop_event):
     spinner = cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
     while not stop_event.is_set():
@@ -236,6 +271,9 @@ def flutter_pub_get():
         sys.exit(1)
 
 
+# =======================
+# Git Commit & Push
+# =======================
 def git_commit_and_push(branch):
     if commit_updates:
         full_commit_msg = commit_message + "\n\n" + "\n".join(commit_updates)
@@ -248,10 +286,17 @@ def git_commit_and_push(branch):
             print("✅ 已提交到本地（未推送）。")
 
 
+# =======================
+# Main Execution
+# =======================
 def main():
     branch = get_current_branch()
     git_pull(branch)
-    latest_versions = get_latest_ap_packages()
+    version_prefix = get_release_version_prefix(branch) if strict_release else None
+    if version_prefix:
+        print(f"📦 开启 strict 模式：当前为 release 分支，仅更新 {version_prefix}.* 范围依赖")
+
+    latest_versions = get_latest_ap_packages(version_prefix)
     if update_pubspec("pubspec.yaml", latest_versions):
         flutter_pub_get()
         if not no_commit:
